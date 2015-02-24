@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">Oh No, Snow!</string>
-    <string name="snow_notifications">Snow Notifications:</string>
+    <string name="snowtifications">Snowtifications:</string>
     <string name="action_settings">Settings</string>
 </resources>

@@ -4,11 +4,19 @@ import android.app.IntentService;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.location.Location;
+import android.support.annotation.NonNull;
 import android.util.Log;
 
 import com.github.stkent.ohnosnow.R;
 import com.github.stkent.ohnosnow.alarm.AlarmManagerHelper;
 import com.github.stkent.ohnosnow.utils.NotificationsUtil;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.location.FusedLocationProviderApi;
+import com.google.android.gms.location.LocationListener;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
@@ -23,8 +31,10 @@ import static android.app.AlarmManager.RTC;
 import static android.os.Build.VERSION.SDK_INT;
 import static android.os.Build.VERSION_CODES.KITKAT;
 import static com.github.stkent.ohnosnow.utils.Constants.LOG_TAG;
+import static com.google.android.gms.location.LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
-public class WeatherUpdateService extends IntentService {
+public class WeatherUpdateService extends IntentService implements LocationListener {
 
     private static final int PENDING_INTENT_REQUEST_CODE = 0x123;
     private static final String WUNDERGROUND_ROOT_URL = "http://api.wunderground.com/api/";
@@ -37,6 +47,8 @@ public class WeatherUpdateService extends IntentService {
         return PendingIntent.getService(context, PENDING_INTENT_REQUEST_CODE, intent, 0);
     }
 
+    private GoogleApiClient googleApiClient;
+
     public WeatherUpdateService() {
         super("WeatherUpdateService");
     }
@@ -47,25 +59,68 @@ public class WeatherUpdateService extends IntentService {
 
         setNextAlarm(this);
 
+        googleApiClient = new GoogleApiClient.Builder(this)
+                .addApi(LocationServices.API)
+                .build();
+
+        final ConnectionResult connectionResult = googleApiClient.blockingConnect(10, SECONDS);
+
+        if (connectionResult.isSuccess()) {
+            Log.d(LOG_TAG, "Connected to Google Play Services");
+            getUserLocation();
+        } else {
+            Log.e(LOG_TAG, "Connection to Google Play Services failed.");
+            NotificationsUtil.showFailureNotification(this);
+        }
+    }
+
+    private void getUserLocation() {
+        final FusedLocationProviderApi locationProvider = LocationServices.FusedLocationApi;
+        final Location location = locationProvider.getLastLocation(googleApiClient);
+
+        if (location != null) {
+            Log.d(LOG_TAG, "Last known location: " + location);
+            getWeatherDataForLocation(location);
+        } else {
+            final LocationRequest locationRequest = new LocationRequest();
+            locationRequest.setPriority(PRIORITY_BALANCED_POWER_ACCURACY);
+            locationProvider.requestLocationUpdates(googleApiClient, locationRequest, this);
+        }
+    }
+
+    private void getWeatherDataForLocation(@NonNull final Location location) {
         final String endpoint = WUNDERGROUND_ROOT_URL + getString(R.string.wunderground_api_key);
         final RestAdapter restAdapter = new RestAdapter.Builder().setEndpoint(endpoint).build();
+        //        final RestAdapter restAdapter = new RestAdapter.Builder().setEndpoint(endpoint).setLogLevel(FULL).setLog(new AndroidLog(LOG_TAG)).build();
         final WundergroundApi weatherApi = restAdapter.create(WundergroundApi.class);
 
         try {
-            // note: blocking call
-            final JsonElement weatherJsonElement = weatherApi.getWeatherData();
+            final JsonElement locationJsonElement = weatherApi.getCityName(location.getLatitude(), location.getLongitude());
+            final String cityName = computeCityName(locationJsonElement);
+            final String cityString = computeCityString(locationJsonElement);
+
+            final JsonElement weatherJsonElement = weatherApi.getWeatherData(cityString);
             final double predictedAccumulationInches = computeSnowAccumulation(weatherJsonElement);
             final String dateString = computeDateString(weatherJsonElement);
 
             if (predictedAccumulationInches > 0) {
-                NotificationsUtil.showSnowNotification(this, dateString, predictedAccumulationInches);
+                NotificationsUtil.showSnowNotification(this, cityName, dateString, predictedAccumulationInches);
             } else {
-                NotificationsUtil.showNoShowNotification(this, dateString);
+                NotificationsUtil.showNoSnowNotification(this, cityName, dateString);
             }
         } catch (Exception e) {
-            Log.e(LOG_TAG, "Caught exception while parsing weather data", e);
+            Log.e(LOG_TAG, "Caught exception while parsing weather api data", e);
             NotificationsUtil.showFailureNotification(this);
         }
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+        Log.d(LOG_TAG, "Location received, removing updates.");
+
+        LocationServices.FusedLocationApi.removeLocationUpdates(googleApiClient, this);
+        googleApiClient.disconnect();
+        getWeatherDataForLocation(location);
     }
 
     private void setNextAlarm(final Context context) {
@@ -78,6 +133,29 @@ public class WeatherUpdateService extends IntentService {
         }
     }
 
+    private JsonObject getLocationJsonObject(JsonElement locationJsonElement) {
+        final JsonObject rootObject = locationJsonElement.getAsJsonObject();
+        return rootObject.getAsJsonObject("location");
+    }
+
+    private String computeCityName(JsonElement locationJsonElement) {
+        final JsonObject location = getLocationJsonObject(locationJsonElement);
+        return location.get("city").getAsString();
+    }
+
+    private String computeCityString(final JsonElement locationJsonElement) {
+        final JsonObject location = getLocationJsonObject(locationJsonElement);
+        final String requestUrl = location.get("requesturl").getAsString();
+        return requestUrl.replaceAll("html", "json");
+    }
+
+    private JsonObject getForecastDayJsonObject(final JsonElement weatherJsonElement) {
+        final JsonObject rootObject = weatherJsonElement.getAsJsonObject();
+        final JsonObject forecast = rootObject.getAsJsonObject("forecast");
+        final JsonObject simpleForecast = forecast.getAsJsonObject("simpleforecast");
+        return simpleForecast.getAsJsonArray("forecastday").get(0).getAsJsonObject();
+    }
+
     private double computeSnowAccumulation(final JsonElement weatherJsonElement) {
         final JsonObject forecastDay = getForecastDayJsonObject(weatherJsonElement);
         final JsonObject snowNight = forecastDay.getAsJsonObject("snow_night");
@@ -87,18 +165,11 @@ public class WeatherUpdateService extends IntentService {
     private String computeDateString(final JsonElement weatherJsonElement) {
         final JsonObject forecastDay = getForecastDayJsonObject(weatherJsonElement);
         final JsonObject date = forecastDay.getAsJsonObject("date");
-        final String epoch = date.getAsJsonPrimitive("epoch").getAsString();
+        final String epoch = date.get("epoch").getAsString();
 
         final Date forecastDate = new Date(Long.parseLong(epoch) * 1000);
         final SimpleDateFormat simpleDateFormat = new SimpleDateFormat("MMM dd", Locale.getDefault());
         return simpleDateFormat.format(forecastDate);
-    }
-
-    private JsonObject getForecastDayJsonObject(final JsonElement weatherJsonElement) {
-        final JsonObject rootObject = weatherJsonElement.getAsJsonObject();
-        final JsonObject forecast = rootObject.getAsJsonObject("forecast");
-        final JsonObject simpleForecast = forecast.getAsJsonObject("simpleforecast");
-        return simpleForecast.getAsJsonArray("forecastday").get(0).getAsJsonObject();
     }
 
 }
