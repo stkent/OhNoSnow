@@ -29,12 +29,12 @@ public class AlarmManagerHelper {
         final Calendar now = Calendar.getInstance();
         final Calendar alarmCalendar = Calendar.getInstance();
 
-//        alarmCalendar.set(Calendar.HOUR_OF_DAY, NOTIFICATION_HOUR);
-//        alarmCalendar.set(Calendar.MINUTE, 0);
-//        alarmCalendar.set(Calendar.SECOND, 0);
-//        alarmCalendar.set(Calendar.MILLISECOND, 0);
+        alarmCalendar.set(Calendar.HOUR_OF_DAY, NOTIFICATION_HOUR);
+        alarmCalendar.set(Calendar.MINUTE, 0);
+        alarmCalendar.set(Calendar.SECOND, 0);
+        alarmCalendar.set(Calendar.MILLISECOND, 0);
 
-        alarmCalendar.add(Calendar.MINUTE, 1);
+//        alarmCalendar.add(Calendar.MINUTE, 1);
 
         // fudge factor to avoid potential issues when re-setting the alarm on KitKat+
         if (alarmCalendar.getTimeInMillis() < now.getTimeInMillis() + SECONDS.toMillis(1)) {

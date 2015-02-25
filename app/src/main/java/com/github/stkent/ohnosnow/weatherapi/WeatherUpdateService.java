@@ -37,7 +37,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 public class WeatherUpdateService extends IntentService implements LocationListener {
 
     private static final int PENDING_INTENT_REQUEST_CODE = 0x123;
-    private static final String WUNDERGROUND_ROOT_URL = "http://api.wunderground.com/api/";
+    private static final String WEATHER_API_ROOT_URL = "http://api.wunderground.com/api/";
 
     /**
      * @return PendingIntent wrapping an Intent that can be used to start this service.
@@ -80,6 +80,7 @@ public class WeatherUpdateService extends IntentService implements LocationListe
 
         if (location != null) {
             Log.d(LOG_TAG, "Last known location: " + location);
+            googleApiClient.disconnect();
             getWeatherDataForLocation(location);
         } else {
             final LocationRequest locationRequest = new LocationRequest();
@@ -89,7 +90,7 @@ public class WeatherUpdateService extends IntentService implements LocationListe
     }
 
     private void getWeatherDataForLocation(@NonNull final Location location) {
-        final String endpoint = WUNDERGROUND_ROOT_URL + getString(R.string.wunderground_api_key);
+        final String endpoint = WEATHER_API_ROOT_URL + getString(R.string.wunderground_api_key);
         final RestAdapter restAdapter = new RestAdapter.Builder().setEndpoint(endpoint).build();
         //        final RestAdapter restAdapter = new RestAdapter.Builder().setEndpoint(endpoint).setLogLevel(FULL).setLog(new AndroidLog(LOG_TAG)).build();
         final WundergroundApi weatherApi = restAdapter.create(WundergroundApi.class);
@@ -97,17 +98,13 @@ public class WeatherUpdateService extends IntentService implements LocationListe
         try {
             final JsonElement locationJsonElement = weatherApi.getCityName(location.getLatitude(), location.getLongitude());
             final String cityName = computeCityName(locationJsonElement);
-            final String cityString = computeCityString(locationJsonElement);
+            final String cityRequestUrl = computeCityRequestUrl(locationJsonElement);
 
-            final JsonElement weatherJsonElement = weatherApi.getWeatherData(cityString);
-            final double predictedAccumulationInches = computeSnowAccumulation(weatherJsonElement);
+            final JsonElement weatherJsonElement = weatherApi.getWeatherData(cityRequestUrl.replaceAll("html", "json"));
+            final double snowInches = computeOvernightSnowAccumulation(weatherJsonElement);
             final String dateString = computeDateString(weatherJsonElement);
 
-            if (predictedAccumulationInches > 0) {
-                NotificationsUtil.showSnowNotification(this, cityName, dateString, predictedAccumulationInches);
-            } else {
-                NotificationsUtil.showNoSnowNotification(this, cityName, dateString);
-            }
+            NotificationsUtil.showSuccessNotification(this, cityName, cityRequestUrl, dateString, snowInches);
         } catch (Exception e) {
             Log.e(LOG_TAG, "Caught exception while parsing weather api data", e);
             NotificationsUtil.showFailureNotification(this);
@@ -143,10 +140,9 @@ public class WeatherUpdateService extends IntentService implements LocationListe
         return location.get("city").getAsString();
     }
 
-    private String computeCityString(final JsonElement locationJsonElement) {
+    private String computeCityRequestUrl(final JsonElement locationJsonElement) {
         final JsonObject location = getLocationJsonObject(locationJsonElement);
-        final String requestUrl = location.get("requesturl").getAsString();
-        return requestUrl.replaceAll("html", "json");
+        return location.get("requesturl").getAsString();
     }
 
     private JsonObject getForecastDayJsonObject(final JsonElement weatherJsonElement) {
@@ -156,7 +152,7 @@ public class WeatherUpdateService extends IntentService implements LocationListe
         return simpleForecast.getAsJsonArray("forecastday").get(0).getAsJsonObject();
     }
 
-    private double computeSnowAccumulation(final JsonElement weatherJsonElement) {
+    private double computeOvernightSnowAccumulation(final JsonElement weatherJsonElement) {
         final JsonObject forecastDay = getForecastDayJsonObject(weatherJsonElement);
         final JsonObject snowNight = forecastDay.getAsJsonObject("snow_night");
         return snowNight.get("in").getAsDouble();
