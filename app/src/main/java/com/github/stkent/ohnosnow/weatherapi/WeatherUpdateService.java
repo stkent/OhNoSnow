@@ -10,6 +10,7 @@ import android.util.Log;
 
 import com.github.stkent.ohnosnow.R;
 import com.github.stkent.ohnosnow.alarm.AlarmManagerHelper;
+import com.github.stkent.ohnosnow.sharedprefs.SharedPreferencesHelper;
 import com.github.stkent.ohnosnow.utils.NotificationsUtil;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -30,6 +31,9 @@ import retrofit.RestAdapter;
 import static android.app.AlarmManager.RTC;
 import static android.os.Build.VERSION.SDK_INT;
 import static android.os.Build.VERSION_CODES.KITKAT;
+import static com.github.stkent.ohnosnow.sharedprefs.SharedPreferencesHelper.NotificationMode;
+import static com.github.stkent.ohnosnow.sharedprefs.SharedPreferencesHelper.NotificationMode.ALL;
+import static com.github.stkent.ohnosnow.sharedprefs.SharedPreferencesHelper.NotificationMode.SNOW_AND_FAILURE_ONLY;
 import static com.github.stkent.ohnosnow.utils.Constants.LOG_TAG;
 import static com.google.android.gms.location.LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -104,7 +108,10 @@ public class WeatherUpdateService extends IntentService implements LocationListe
             final double snowInches = computeOvernightSnowAccumulation(weatherJsonElement);
             final String dateString = computeDateString(weatherJsonElement);
 
-            NotificationsUtil.showSuccessNotification(this, cityName, cityRequestUrl, dateString, snowInches);
+            final NotificationMode currentNotificationMode = SharedPreferencesHelper.getNotificationMode(this);
+            if (currentNotificationMode == ALL || (currentNotificationMode == SNOW_AND_FAILURE_ONLY && snowInches > 0)) {
+                NotificationsUtil.showSuccessNotification(this, cityName, cityRequestUrl, dateString, snowInches);
+            }
         } catch (Exception e) {
             Log.e(LOG_TAG, "Caught exception while parsing weather api data", e);
             NotificationsUtil.showFailureNotification(this);

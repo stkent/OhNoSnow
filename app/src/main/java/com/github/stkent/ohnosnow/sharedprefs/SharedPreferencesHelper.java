@@ -9,16 +9,33 @@ import static com.github.stkent.ohnosnow.utils.Constants.LOG_TAG;
 
 public class SharedPreferencesHelper {
 
-    private static final String NOTIFICATIONS_ENABLED_KEY = "com.github.stkent.ohnosnow.notifications_enabled_key";
-    private static final boolean NOTIFICATIONS_ENABLED_DEFAULT_STATE = false;
+    public enum NotificationMode {
+        NONE("Off"),
+        SNOW_AND_FAILURE_ONLY("Snow only"),
+        ALL("Always");
 
-    public static void setNotificationsEnabled(final Context context, final boolean enabled) {
-        Log.d(LOG_TAG, "Setting notifications enabled: " + enabled);
-        getSharedPreferences(context).edit().putBoolean(NOTIFICATIONS_ENABLED_KEY, enabled).apply();
+        private String displayString;
+
+        NotificationMode(final String displayString) {
+            this.displayString = displayString;
+        }
+
+        @Override
+        public String toString() {
+            return displayString;
+        }
     }
 
-    public static boolean areNotificationsEnabled(final Context context) {
-        return getSharedPreferences(context).getBoolean(NOTIFICATIONS_ENABLED_KEY, NOTIFICATIONS_ENABLED_DEFAULT_STATE);
+    private static final String NOTIFICATION_MODE_KEY = "com.github.stkent.ohnosnow.notification_mode_key";
+    private static final NotificationMode DEFAULT_NOTIFICATION_MODE = NotificationMode.NONE;
+
+    public static void setNotificationMode(final Context context, final NotificationMode newNotificationMode) {
+        Log.d(LOG_TAG, "Setting notification mode: " + newNotificationMode);
+        getSharedPreferences(context).edit().putInt(NOTIFICATION_MODE_KEY, newNotificationMode.ordinal()).apply();
+    }
+
+    public static NotificationMode getNotificationMode(final Context context) {
+        return NotificationMode.values()[getSharedPreferences(context).getInt(NOTIFICATION_MODE_KEY, DEFAULT_NOTIFICATION_MODE.ordinal())];
     }
 
     private static SharedPreferences getSharedPreferences(final Context context) {

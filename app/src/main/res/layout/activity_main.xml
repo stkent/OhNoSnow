@@ -12,12 +12,9 @@
         android:layout_height="wrap_content"
         android:layout_weight="1" />
     
-    <Switch
-        android:id="@+id/notifications_switch"
+    <Spinner
+        android:id="@+id/notificationModeSpinner"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:textOn="On"
-        android:textOff="Off"
-        android:checked="false" />
+        android:layout_height="wrap_content" />
 
 </LinearLayout>
