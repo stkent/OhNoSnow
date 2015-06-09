@@ -10,8 +10,11 @@ import android.util.Log;
 import com.github.stkent.ohnosnow.R;
 
 import static android.app.Notification.Builder;
+import static android.app.Notification.VISIBILITY_PUBLIC;
 import static android.content.Context.NOTIFICATION_SERVICE;
 import static android.content.Intent.ACTION_VIEW;
+import static android.os.Build.VERSION.SDK_INT;
+import static android.os.Build.VERSION_CODES.LOLLIPOP;
 import static com.github.stkent.ohnosnow.utils.Constants.LOG_TAG;
 
 public class NotificationsUtil {
@@ -26,7 +29,7 @@ public class NotificationsUtil {
 
         final String contentString = dateString + ": " + (snowInches > 0 ? snowInches + "\" of snow overnight." : "No overnight snow.");
 
-        final Builder builder = new Builder(context)
+        final Builder builder = getDefaultBuilder(context)
                 .setContentTitle(cityName)
                 .setContentText(contentString)
                 .setContentIntent(weatherPendingIntent)
@@ -38,7 +41,7 @@ public class NotificationsUtil {
     public static void showFailureNotification(final Context context) {
         Log.d(LOG_TAG, "Showing failure notification.");
 
-        final Builder builder = new Builder(context)
+        final Builder builder = getDefaultBuilder(context)
                 .setContentTitle("Uh oh!")
                 .setContentText("Failed to retrieve weather data :(");
 
@@ -46,9 +49,19 @@ public class NotificationsUtil {
     }
 
     private static void notify(final Context context, final Builder builder) {
-        builder.setSmallIcon(R.drawable.ic_notification);
         final NotificationManager notificationManager = (NotificationManager) context.getSystemService(NOTIFICATION_SERVICE);
         notificationManager.notify(APP_NOTIFICATION_ID, builder.build());
+    }
+
+    private static Builder getDefaultBuilder(final Context context) {
+        final Builder result = new Builder(context)
+                .setSmallIcon(R.drawable.ic_notification);
+
+        if (SDK_INT >= LOLLIPOP) {
+            result.setVisibility(VISIBILITY_PUBLIC);
+        }
+
+        return result;
     }
 
 }
